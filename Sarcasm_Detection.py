@@ -74,9 +74,28 @@ class ExplicitIncongruityFeatures(BaseEstimator, TransformerMixin):
             tokens = nltk.word_tokenize(text)
             pos_tags = nltk.pos_tag(tokens)
             polarities = [self.sid.polarity_scores(word)['compound'] for word, tag in pos_tags if tag.startswith('JJ') or tag.startswith('VB')]
+            
             pos_count = sum(1 for p in polarities if p > 0.5)
             neg_count = sum(1 for p in polarities if p < -0.5)
-            return [pos_count, neg_count, len(polarities)]
+
+            # Calculate the longest positive/negative subsequence
+            longest_pos_seq = longest_neg_seq = 0
+            current_pos_seq = current_neg_seq = 0
+
+            for p in polarities:
+                if p > 0.5:
+                    current_pos_seq += 1
+                    current_neg_seq = 0
+                elif p < -0.5:
+                    current_neg_seq += 1
+                    current_pos_seq = 0
+                else:
+                    current_pos_seq = current_neg_seq = 0
+                
+                longest_pos_seq = max(longest_pos_seq, current_pos_seq)
+                longest_neg_seq = max(longest_neg_seq, current_neg_seq)
+
+            return [pos_count, neg_count, len(polarities), longest_pos_seq, longest_neg_seq]
 
         return np.array([explicit_incongruity(text) for text in X])
 
@@ -150,14 +169,6 @@ y_val_pred = pipeline.predict(X_val_transformed)
 print("Validation Accuracy:", accuracy_score(y_val, y_val_pred))
 print("Validation Classification Report:\n", classification_report(y_val, y_val_pred))
 
-# # Cross-Validation
-# scores = cross_val_score(Pipeline([
-#     ('features', features),
-#     ('classifier', SVC(kernel='rbf', class_weight=class_weights_dict))
-# ]), X, y, cv=5, scoring='f1')
-# print("Cross-Validation F1 Scores:", scores)
-# print("Average F1 Score:", np.mean(scores))
-
 # Predictions for test data
 X_test_transformed = preprocessing_pipeline.transform(test_df['body'])
 y_test_pred = pipeline.predict(X_test_transformed)
@@ -166,3 +177,4 @@ y_test_pred = pipeline.predict(X_test_transformed)
 test_df['sarcasm_prediction'] = y_test_pred
 print(test_df[['body', 'sarcasm_prediction']])
 test_df.to_csv('sarcasm_predictions.csv', index=False)
+
